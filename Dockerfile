@@ -1,10 +1,23 @@
-FROM node:12-alpine
+FROM node:18-alpine
 
-RUN mkdir -p /home/node/app/node_modules && chown -R node:node /home/node/app
+RUN mkdir -p /home/node/app && chown -R node:node /home/node/app
 WORKDIR /home/node/app
-COPY package*.json ./
+
+# Copy only the dist folder and package files
+COPY --chown=node:node ./dist ./dist
+COPY --chown=node:node package*.json ./
+
 USER node
-RUN npm install
-COPY --chown=node:node . .
-EXPOSE 1234
-CMD [ "npm", "start" ]
+# Install only production dependencies
+RUN npm ci --only=production
+
+# Heroku dynamically assigns a port, so we use the $PORT environment variable
+ENV PORT=1234
+ENV HOST="0.0.0.0"
+ENV NODE_ENV="production"
+
+# Use PORT environment variable but default to 1234 if not set
+EXPOSE $PORT
+
+# Start the application using the compiled server.cjs in the dist folder
+CMD [ "sh", "-c", "HOST=0.0.0.0 node dist/server.cjs" ]
