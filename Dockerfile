@@ -20,4 +20,4 @@ ENV NODE_ENV="production"
 EXPOSE $PORT
 
 # Start the application using the compiled server.cjs in the dist folder
-CMD [ "sh", "-c", "HOST=0.0.0.0 node dist/server.cjs" ]
+CMD [ "sh", "-c", "node dist/server.cjs --host=0.0.0.0 --port=${PORT}" ]
