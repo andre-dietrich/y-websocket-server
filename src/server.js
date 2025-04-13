@@ -4,6 +4,48 @@ import WebSocket from 'ws'
 import http from 'http'
 import * as number from 'lib0/number'
 import { setupWSConnection } from './utils.js'
+import os from 'os' // Add this import for network info
+
+// ANSI color codes for terminal output
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  underscore: '\x1b[4m',
+  blink: '\x1b[5m',
+  reverse: '\x1b[7m',
+  hidden: '\x1b[8m',
+
+  black: '\x1b[30m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+
+  bgBlack: '\x1b[40m',
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+  bgYellow: '\x1b[43m',
+  bgBlue: '\x1b[44m',
+  bgMagenta: '\x1b[45m',
+  bgCyan: '\x1b[46m',
+  bgWhite: '\x1b[47m',
+}
+
+// Helper functions for colored output
+const info = (text) => `${colors.cyan}${text}${colors.reset}`
+const success = (text) => `${colors.green}${text}${colors.reset}`
+const warning = (text) => `${colors.yellow}${text}${colors.reset}`
+const error = (text) => `${colors.red}${text}${colors.reset}`
+const header = (text) =>
+  `${colors.bright}${colors.magenta}${text}${colors.reset}`
+const highlight = (text) =>
+  `${colors.bgGreen}${colors.black}${colors.bright}${text}${colors.reset}`
+const url = (text) =>
+  `${colors.underscore}${colors.green}${text}${colors.reset}`
 
 // Display help information
 function showHelp() {
@@ -52,6 +94,30 @@ function parseArgs() {
   return result
 }
 
+// New function to get local network information
+function getNetworkInfo() {
+  const interfaces = os.networkInterfaces()
+  const addresses = []
+
+  for (const interfaceName in interfaces) {
+    const networkInterface = interfaces[interfaceName]
+
+    if (!networkInterface) continue
+    for (const iface of networkInterface) {
+      // Skip internal and non-IPv4 addresses
+      if (!iface.internal && iface.family === 'IPv4') {
+        addresses.push({
+          interface: interfaceName,
+          address: iface.address,
+          netmask: iface.netmask,
+        })
+      }
+    }
+  }
+
+  return addresses
+}
+
 const args = parseArgs()
 
 // Show help and exit if --help or -h was provided
@@ -65,9 +131,6 @@ const wss = new WebSocket.Server({ noServer: true })
 // Priority: command line args > environment variables > defaults
 const host = args.host || process.env.HOST || '0.0.0.0'
 const port = number.parseInt(String(args.port || process.env.PORT || '1234'))
-
-console.warn(`host: ${host}`)
-console.warn(`port: ${port}`)
 
 // Add CORS headers for browser support
 const server = http.createServer((request, response) => {
@@ -88,7 +151,7 @@ const server = http.createServer((request, response) => {
 wss.on('connection', setupWSConnection)
 
 server.on('upgrade', (request, socket, head) => {
-  console.log(`Upgrade request received: ${request.url}`)
+  console.log(`${info('Upgrade request received:')} ${url(request.url)}`)
 
   try {
     wss.handleUpgrade(
@@ -96,30 +159,59 @@ server.on('upgrade', (request, socket, head) => {
       socket,
       head,
       /** @param {any} ws */ (ws) => {
-        console.log('WebSocket connection established')
+        console.log(`${success('WebSocket connection established')}`)
         wss.emit('connection', ws, request)
       }
     )
-  } catch (error) {
-    console.error('WebSocket upgrade error:', error)
+  } catch (e) {
+    console.error(`${error('WebSocket upgrade error:')} ${e}`)
     socket.destroy()
   }
 })
 
 server.listen(port, host, () => {
-  console.log(`running at '${host}' on port ${port}`)
+  console.log(`\n${header('=== Y-WebSocket Server ===')}`)
+  console.log(`${info('Server running at:')} ${success(`${host}:${port}`)}`)
   console.log(
-    `WebSocket server started, environment: ${
-      process.env.NODE_ENV || 'development'
-    }`
+    `${info('Environment:')} ${success(process.env.NODE_ENV || 'development')}`
   )
+
+  // Add detailed network information
+  console.log(`\n${header('Local Network Information:')}`)
+  const networkInfo = getNetworkInfo()
+
+  if (networkInfo.length === 0) {
+    console.log(warning('  No network interfaces detected'))
+  } else {
+    networkInfo.forEach((info, index) => {
+      console.log(
+        `\n  ${header(`Interface ${index + 1}:`)} ${success(info.interface)}`
+      )
+      console.log(`  ${header('IP Address:')} ${success(info.address)}`)
+      console.log(
+        `  ${header('WebSocket URL:')} ${url(`ws://${info.address}:${port}`)}`
+      )
+      console.log(
+        `  ${header('Secure WebSocket URL:')} ${url(
+          `wss://${info.address}:${port}`
+        )}`
+      )
+    })
+  }
+
+  console.log(
+    `\n${header('To access from this machine:')} ${highlight(
+      ` ws://localhost:${port} `
+    )}`
+  )
+  console.log(`${header('==============================')}\n`)
 })
 
 // Add error handlers
 server.on('error', (err) => {
-  console.error('Server error:', err)
+  console.error(`${error('Server error:')} ${err}`)
 })
 
 wss.on('error', (err) => {
-  console.error('WebSocket server error:', err)
+  console.error(`${error('WebSocket server error:')} ${err}`)
 })
